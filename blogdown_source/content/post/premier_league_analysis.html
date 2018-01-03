@@ -1,0 +1,196 @@
+---
+title: An Analysis of Premier League.rmd
+author: Yang Song
+date: '2017-04-29'
+draft: false
+type: "post"
+thumbnailImagePosition: left
+thumbnailImage: "img/premier_league_logo.jpg"
+---
+
+
+<p>The <strong>Premier League</strong> is an English professional league for men’s association football clubs. At the top of the English football league system, it is the country’s primary football competition. Contested by 20 clubs, it operates on a system of promotion and relegation with the English Football League. Premier League season runs from August to May, Teams play 38 matches each, totalling 380 matches in the season. I have to say that it’s my favorite league in the world, I do really enjoy the high competitiveness of Premier League, Also in the video game, it’s a wise choice to start your career mode using a Premier League team due to the high transfer budget.</p>
+<!--more-->
+<div id="setup" class="section level2">
+<h2>Setup</h2>
+<p><em>The soccer data is collected and prepared by James P. Curley (2016). engsoccerdata: English Soccer Data</em></p>
+<div id="import-and-clean-the-data" class="section level3">
+<h3>Import and clean the data</h3>
+<pre class="r"><code>library(stats)
+library(devtools)
+# install_github(&#39;jalapic/engsoccerdata&#39;, username = &#39;jalapic&#39;)
+library(engsoccerdata)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(ggrepel)
+
+
+df &lt;- as_tibble(england)
+
+# The dataset includes results of all top 4 tier soccer games in England
+# since 1888, In our analysis, We are only interested in the Premier League
+# which started in 1992.
+df$date &lt;- as.Date(df$Date, format = &quot;%Y-%m-%d&quot;)
+pl &lt;- df %&gt;% filter(tier == 1, Season &gt;= 1992)</code></pre>
+</div>
+<div id="visulizating-some-interesting-facts" class="section level3">
+<h3>Visulizating some interesting facts</h3>
+<ul>
+<li>The followings are the 47 teams that ever played in Premier League for at least one season</li>
+</ul>
+<pre class="r"><code>sort(unique(pl$home))</code></pre>
+<pre><code>##  [1] &quot;AFC Bournemouth&quot;         &quot;Arsenal&quot;                
+##  [3] &quot;Aston Villa&quot;             &quot;Barnsley&quot;               
+##  [5] &quot;Birmingham City&quot;         &quot;Blackburn Rovers&quot;       
+##  [7] &quot;Blackpool&quot;               &quot;Bolton Wanderers&quot;       
+##  [9] &quot;Bradford City&quot;           &quot;Burnley&quot;                
+## [11] &quot;Cardiff City&quot;            &quot;Charlton Athletic&quot;      
+## [13] &quot;Chelsea&quot;                 &quot;Coventry City&quot;          
+## [15] &quot;Crystal Palace&quot;          &quot;Derby County&quot;           
+## [17] &quot;Everton&quot;                 &quot;Fulham&quot;                 
+## [19] &quot;Hull City&quot;               &quot;Ipswich Town&quot;           
+## [21] &quot;Leeds United&quot;            &quot;Leicester City&quot;         
+## [23] &quot;Liverpool&quot;               &quot;Manchester City&quot;        
+## [25] &quot;Manchester United&quot;       &quot;Middlesbrough&quot;          
+## [27] &quot;Newcastle United&quot;        &quot;Norwich City&quot;           
+## [29] &quot;Nottingham Forest&quot;       &quot;Oldham Athletic&quot;        
+## [31] &quot;Portsmouth&quot;              &quot;Queens Park Rangers&quot;    
+## [33] &quot;Reading&quot;                 &quot;Sheffield United&quot;       
+## [35] &quot;Sheffield Wednesday&quot;     &quot;Southampton&quot;            
+## [37] &quot;Stoke City&quot;              &quot;Sunderland&quot;             
+## [39] &quot;Swansea City&quot;            &quot;Swindon Town&quot;           
+## [41] &quot;Tottenham Hotspur&quot;       &quot;Watford&quot;                
+## [43] &quot;West Bromwich Albion&quot;    &quot;West Ham United&quot;        
+## [45] &quot;Wigan Athletic&quot;          &quot;Wimbledon&quot;              
+## [47] &quot;Wolverhampton Wanderers&quot;</code></pre>
+<ul>
+<li>which clubs have never been relegated from the league ?</li>
+</ul>
+<pre class="r"><code>pl_team &lt;- pl %&gt;%
+       group_by(home) %&gt;%
+       summarize(appearence = n_distinct(Season))
+
+pl_team %&gt;%
+  mutate(home = reorder(home, appearence)) %&gt;%
+  top_n(15) %&gt;%
+  ggplot(aes(x = reorder(home, -appearence), y = appearence)) +
+  geom_bar(stat = &#39;identity&#39;, fill = &#39;lightblue&#39;, color = &#39;black&#39;) +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  xlab(&#39;Club&#39;) +
+  ylab(&#39;Season&#39;) +
+  ggtitle(&#39;Total Seasons in Premier League&#39;)</code></pre>
+<p><img src="/post/premier_league_analysis_files/figure-html/unnamed-chunk-3-1.png" width="672" /></p>
+<p>Since the start of the Premier League, seven clubs have never faced the drop: They are <strong>Arsenal, Aston Villa, Chelsea, Everton, Liverpool, Man Utd and Hotspur</strong>. Hopefully, we could see Newcastle United in the next season ! <br /></p>
+<ul>
+<li>Ranking of each club in the past 25 years</li>
+</ul>
+<pre class="r"><code>pl_rank &lt;- pl %&gt;%
+           mutate(home_team_point = ifelse(hgoal &gt; vgoal, 3, ifelse(hgoal == vgoal, 1, 0))) %&gt;%
+           mutate(away_team_point = ifelse(vgoal &gt; hgoal, 3, ifelse(hgoal == vgoal, 1, 0)))
+temp1 &lt;-  pl_rank %&gt;%
+           group_by(Season, home) %&gt;%
+           summarize(home_points = sum(home_team_point))
+temp2 &lt;- pl_rank %&gt;%
+          group_by(Season, visitor) %&gt;%
+          summarize(away_points = sum(away_team_point))
+
+temp1$away_points &lt;- temp2$away_points
+pl_rank &lt;- temp1 %&gt;%
+           mutate(total_points = home_points + away_points)
+
+pl_rank &lt;- pl_rank %&gt;%
+           rename(Team = home) %&gt;%
+           group_by(Season) %&gt;%
+           arrange(-total_points) %&gt;%
+           mutate(ranking = row_number())
+
+# We only include some famous football clubs in the visulization
+pl_rank  %&gt;%
+    filter(Team %in% c(&#39;Arsenal&#39;,&#39;Chelsea&#39;,&#39;Liverpool&#39;,
+                       &#39;Manchester City&#39;,&#39;Manchester United&#39;,&#39;Tottenham Hotspur&#39;)) %&gt;%
+    ggplot(aes(x = Season, y = ranking, group = Team, colour = Team)) +
+    geom_line(size = 1) +
+    geom_point() +
+    scale_x_continuous(breaks=seq(1992,2015,1)) +
+    theme(axis.text.x=element_text(angle=45, hjust=1)) +
+    xlab(&#39;Year&#39;) +
+    ylab(&#39;Standing&#39;) +
+    ggtitle(&#39;Top Team Standing&#39;) +
+    theme(legend.position=&quot;bottom&quot;)</code></pre>
+<p><img src="/post/premier_league_analysis_files/figure-html/unnamed-chunk-4-1.png" width="672" /></p>
+<p>From the plot, I notice Manchester United wins the most titles in the premier league history and fans are impressed by their stability and consistency before Ferguson’s retirement in 2012. On the other hand, Manchester City is not a championship competitor before, After being purchased by the <strong>Abu Dhabi United Group</strong> in 2008, the club took transfer spending to an unprecendented level and the continued inverstment in players followed in gradually successive seasons.<br /></p>
+</div>
+</div>
+<div id="analysis" class="section level2">
+<h2>Analysis</h2>
+<div id="could-defense-help-a-team-to-win-championships" class="section level3">
+<h3>Could defense help a team to win championships ?</h3>
+<p>In 2004, Greece won the European Championship with a defense first approach. They did manage to score in the process, but it was their defense that allowed them to claim the title. In addition, <strong>Jose Mourinho</strong> helped Inter Milan to win the 2010 Champions League by employing the so called ‘parking the bus’ strategy, avoiding attacking play and let all team chasing the ball in their half-court. Clearly, All of the examples I cited are in the tournament game. So I want to learn that if it’s possible for a team without explosive strikers but outstanding defensive still able to win the premier league ?</p>
+<p>I use the ranking of <strong>total goals a team has scored</strong> to evaluate the ability of its offense, In the same way, I used the ranking of <strong>total goals a team have been scored</strong> to evaluate the ability its defense</p>
+<pre class="r"><code>pl_team_overview &lt;- pl %&gt;%
+           mutate(home_team_point = ifelse(hgoal &gt; vgoal, 3, ifelse(hgoal == vgoal, 1, 0))) %&gt;%
+           mutate(away_team_point = ifelse(vgoal &gt; hgoal, 3, ifelse(hgoal == vgoal, 1, 0)))
+
+temp1 &lt;-  pl_team_overview %&gt;%
+           group_by(Season, home) %&gt;%
+           summarize(home_points = sum(home_team_point), GF_Home = sum(hgoal), GA_Home = sum(vgoal))
+
+temp2 &lt;- pl_team_overview %&gt;%
+          group_by(Season, visitor) %&gt;%
+          summarize(away_points = sum(away_team_point), GF_Away = sum(vgoal), GA_Away = sum(hgoal))
+
+temp1$away_points &lt;- temp2$away_points
+temp1$GF_Away &lt;- temp2$GF_Away
+temp1$GA_Away &lt;- temp2$GA_Away
+
+pl_team_overview &lt;- temp1 %&gt;%
+           mutate(total_points = home_points + away_points) %&gt;%
+           mutate(GF = GF_Home + GF_Away) %&gt;%
+           mutate(GA = GA_Home + GA_Away) %&gt;%
+           mutate(goaldiff = GF - GA)
+
+pl_team_overview &lt;- pl_team_overview %&gt;%
+           rename(Team = home) %&gt;%
+           group_by(Season) %&gt;%
+           mutate(GF_ranking = rank(-GF, ties.method = &quot;min&quot;), GA_ranking = rank(GA, ties.method = &quot;min&quot;), points_ranking = order(order(-total_points, -goaldiff)))
+
+
+# Plot the offense and defense Ranking of the Championship Team
+pl_team_overview %&gt;%
+                  filter(points_ranking == 1) %&gt;%
+                  ggplot(aes(x = GF_ranking, y = GA_ranking)) +
+                  geom_point(shape = 15, color = &#39;deepskyblue3&#39;, fill = &#39;deepskyblue3&#39;, size = 15, alpha = 1/3) +
+                  geom_abline(intercept = 0, slope = 1, color=&quot;red&quot;, linetype=&quot;dashed&quot;) +
+                  scale_x_continuous(name=&quot;Goals Scored Ranking&quot;, limits=c(1, 8), breaks = seq(1,8,1)) +
+                  scale_y_continuous(name=&quot;Goals Allowed Ranking&quot;, limits=c(1, 8), breaks = seq(1,8,1)) +
+                  ggtitle(&#39;Premier League Championships offense and defense Ranking&#39;)</code></pre>
+<p><img src="/post/premier_league_analysis_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
+<p>From the above plot, I noticed that most of the points cluster in the upper left part of the plot, which indicates all of past premier league championship teams at least have the top 3 offense, on the other hand, their defensive ability may not be prestigious (Top 7)</p>
+</div>
+<div id="could-defense-help-a-team-to-avoid-relegation" class="section level3">
+<h3>Could defense help a team to avoid relegation ?</h3>
+<p>Surviving Premier League relegation has always been lucrative, considering that teams staying afloat can retain around 100 million for the next season. Still, not eveyone can avoid the drop. So my question is that is it possible for a team with slightly above average defense but unproductive offense ensure survival ?</p>
+<pre class="r"><code># Plot the offense and defense Ranking of the Relegation Team
+# In season 1992-1994, there are more than 20 teams in the league
+relegation_team &lt;- pl_team_overview %&gt;%
+                          filter((Season %in% (1995:2016) &amp; points_ranking &gt;= 18) |
+                          (Season == 1992 &amp; points_ranking &gt;= 20) |
+                          (Season == 1993 &amp; points_ranking &gt;= 20) |
+                          (Season == 1994 &amp; points_ranking &gt;= 19)) %&gt;%
+                          select(Season, Team, GF_ranking, GA_ranking) %&gt;%
+                        rename(Offense = GF_ranking, Defense = GA_ranking)
+
+# Convert the dataframe from wide to long using tidyr package
+relegation_team_long &lt;- gather(relegation_team, Offense_or_Defense, ranking, Offense, Defense)
+
+relegation_team_long %&gt;%
+                ggplot(aes(x = ranking, fill = Offense_or_Defense)) +
+                geom_density(alpha = 0.4) +
+                scale_x_continuous(name=&quot;Ranking&quot;, limits=c(1, 22), breaks = seq(1,20,1)) +
+                ggtitle(&#39;Premier League Relegation Team&#39;)</code></pre>
+<p><img src="/post/premier_league_analysis_files/figure-html/unnamed-chunk-6-1.png" width="672" /></p>
+<p>From the above plot, Relegation teams always did worse in both offense and defense side. In addition, I notice that defense has higher density in the lower ranking side of the plot, which infers the relegation teams have lower average defense ranking than offense ranking. However, the difference is not significant. On the other hand, The basic lesson is that competence on both offense and defense with a slightly above average performance in one of the two areas (ranking in top 8) is enough to gurantee survival</p>
+</div>
+</div>
